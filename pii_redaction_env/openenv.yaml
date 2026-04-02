@@ -1,0 +1,36 @@
+spec_version: 1
+name: pii_redaction_env
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
+metadata:
+  description: Seeded synthetic PII detection and redaction environment with deterministic grading.
+  category: privacy
+tasks:
+  - id: basic_pii_detection
+    difficulty: easy
+    description: Identify straightforward person, email, and phone spans in a short synthetic note.
+  - id: mixed_pii_redaction
+    difficulty: medium
+    description: Redact mixed direct identifiers across contact, finance, and identity fields.
+  - id: adversarial_quasi_identification
+    difficulty: hard
+    description: Catch direct identifiers plus quasi-identifiers that raise re-identification risk.
+observation_space:
+  type: object
+  fields:
+    task_id: string
+    difficulty: string
+    instructions: string
+    document_text: string
+    predicted_spans: array
+    reward_details: object
+    final_score: number_or_null
+    done: boolean
+    reward: number
+action_space:
+  type: object
+  fields:
+    spans: array
+    submit: boolean

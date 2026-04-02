@@ -1,0 +1,37 @@
+# Copyright (c) Meta Platforms, Inc. and affiliates.
+# All rights reserved.
+#
+# This source code is licensed under the BSD-style license found in the
+# LICENSE file in the root directory of this source tree.
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openenv-pii_redaction_env"
+version = "0.1.0"
+description = "Seeded synthetic PII detection and redaction environment for OpenEnv"
+requires-python = ">=3.10"
+dependencies = [
+    "openenv-core[core]>=0.2.2",
+    "fastapi",
+    "uvicorn",
+    "pydantic>=2",
+    "faker",
+    "openai",
+    "httpx",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+server = "pii_redaction_env.server:main"
+
+[tool.setuptools]
+include-package-data = true
+packages = ["pii_redaction_env", "pii_redaction_env.data", "pii_redaction_env.tests"]
+package-dir = { "pii_redaction_env" = ".", "pii_redaction_env.data" = "data", "pii_redaction_env.tests" = "tests" }
