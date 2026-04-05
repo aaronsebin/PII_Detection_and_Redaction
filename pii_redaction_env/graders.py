@@ -8,6 +8,8 @@ try:
 except ImportError:
     from models import PIIType, RedactionSpan
 
+_EPSILON = 1e-6
+
 
 def _span_key(span: RedactionSpan) -> tuple[int, int, str]:
     return (span.start, span.end, span.pii_type.value)
@@ -24,20 +26,23 @@ def _group_by_type(
 
 def _safe_f1(tp: int, fp: int, fn: int) -> float:
     if tp == 0 and fp == 0 and fn == 0:
-        return 1.0
+        return 1.0 - _EPSILON
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     if precision + recall == 0:
-        return 0.0
-    return 2 * precision * recall / (precision + recall)
+        return _EPSILON
+    return max(
+        _EPSILON,
+        min(1.0 - _EPSILON, 2 * precision * recall / (precision + recall)),
+    )
 
 
 def grade_easy(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> float:
     return (
-        1.0
+        1.0 - _EPSILON
         if {_span_key(span) for span in predicted}
         == {_span_key(span) for span in gold}
-        else 0.0
+        else _EPSILON
     )
 
 
@@ -46,7 +51,7 @@ def grade_medium(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> f
     gold_by_type = _group_by_type(gold)
     labels = sorted(set(predicted_by_type) | set(gold_by_type), key=lambda item: item.value)
     if not labels:
-        return 1.0
+        return 1.0 - _EPSILON
 
     scores: list[float] = []
     for label in labels:
@@ -56,7 +61,7 @@ def grade_medium(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> f
         fp = len(pred_set - gold_set)
         fn = len(gold_set - pred_set)
         scores.append(_safe_f1(tp, fp, fn))
-    return sum(scores) / len(scores)
+    return max(_EPSILON, min(1.0 - _EPSILON, sum(scores) / len(scores)))
 
 
 def grade_hard(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> float:
@@ -64,7 +69,7 @@ def grade_hard(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> flo
     gold_by_type = _group_by_type(gold)
     labels = sorted(set(predicted_by_type) | set(gold_by_type), key=lambda item: item.value)
     if not labels:
-        return 1.0
+        return 1.0 - _EPSILON
 
     total_weight = 0.0
     weighted_score = 0.0
@@ -85,4 +90,4 @@ def grade_hard(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> flo
 
     base = weighted_score / total_weight if total_weight else 0.0
     bonus = 0.1 * quasi_recall
-    return min(1.0, base + bonus)
+    return max(_EPSILON, min(1.0 - _EPSILON, base + bonus))

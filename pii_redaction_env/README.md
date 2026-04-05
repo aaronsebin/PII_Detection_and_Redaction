@@ -62,17 +62,25 @@ Run tests:
 pytest
 ```
 
-Run the OpenAI baseline:
+## Environment Variables
+
+- `API_BASE_URL`: Base URL for the OpenAI-compatible inference endpoint used by `inference.py`.
+- `MODEL_NAME`: Model identifier sent on every LLM request from `inference.py`.
+- `HF_TOKEN`: API key passed to the OpenAI client for authenticated requests.
+
+Run the inference script:
 
 ```bash
-set OPENAI_API_KEY=your_key_here
-python -m pii_redaction_env.baseline
+set API_BASE_URL=https://your-openai-compatible-endpoint/v1
+set MODEL_NAME=your-model-id
+set HF_TOKEN=your_token_here
+python inference.py
 ```
 
-## Baseline scores
+## Inference scores
 
-The baseline script evaluates `gpt-4o-mini` on all three tasks at `seed=42` and prints per-task scores plus the mean. Actual values depend on the model snapshot and API access at runtime.
+The inference script evaluates the configured model on all three tasks at `seed=42` and prints structured start, step, and end logs plus the final mean score. Actual values depend on the model snapshot and API access at runtime.
 
 | Model | Seed | basic_pii_detection | mixed_pii_redaction | adversarial_quasi_identification | Mean |
 | --- | --- | --- | --- | --- | --- |
-| `gpt-4o-mini` via `baseline.py` | `42` | runtime-evaluated | runtime-evaluated | runtime-evaluated | runtime-evaluated |
+| `MODEL_NAME` via `inference.py` | `42` | runtime-evaluated | runtime-evaluated | runtime-evaluated | runtime-evaluated |

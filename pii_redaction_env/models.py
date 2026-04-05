@@ -73,6 +73,9 @@ class PIIObservation(Observation):
         description="Terminal grader score for the current task, when available.",
     )
 
+    def as_step_result(self) -> tuple["PIIObservation", float, bool, dict[str, Any]]:
+        return (self, float(self.reward), bool(self.done), dict(self.metadata))
+
 
 class PIIState(State):
     task_id: str | None = Field(default=None)
@@ -84,3 +87,6 @@ class PIIState(State):
     reward_history: list[PIIReward] = Field(default_factory=list)
     done: bool = Field(default=False)
     closed: bool = Field(default=False)
+
+    def __call__(self) -> "PIIState":
+        return self

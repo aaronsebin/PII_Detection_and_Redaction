@@ -25,7 +25,12 @@ def _extract_text(response) -> str:
     raise ValueError("OpenAI response did not contain text output")
 
 
-def _predict_spans(client: OpenAI, task_id: str, document_text: str) -> list[RedactionSpan]:
+def _predict_spans(
+    client: OpenAI,
+    model_name: str,
+    task_id: str,
+    document_text: str,
+) -> list[RedactionSpan]:
     schema = {
         "type": "object",
         "properties": {
@@ -51,7 +56,7 @@ def _predict_spans(client: OpenAI, task_id: str, document_text: str) -> list[Red
         "additionalProperties": False,
     }
     response = client.responses.create(
-        model="gpt-4o-mini",
+        model=model_name,
         input=[
             {
                 "role": "system",
@@ -89,25 +94,82 @@ def _predict_spans(client: OpenAI, task_id: str, document_text: str) -> list[Red
     return [RedactionSpan(**span) for span in payload["spans"]]
 
 
+def _log(prefix: str, payload: dict[str, object]) -> None:
+    print(f"{prefix} {json.dumps(payload, ensure_ascii=True)}")
+
+
 def main() -> None:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is required to run the baseline")
+    api_base_url = os.getenv("API_BASE_URL", "")
+    model_name = os.getenv("MODEL_NAME", "")
+    hf_token = os.getenv("HF_TOKEN", "")
+    missing = [
+        name
+        for name, value in [
+            ("API_BASE_URL", api_base_url),
+            ("MODEL_NAME", model_name),
+            ("HF_TOKEN", hf_token),
+        ]
+        if not value
+    ]
+    if missing:
+        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
-    client = OpenAI(api_key=api_key)
+    client = OpenAI(base_url=api_base_url, api_key=hf_token)
     env = PIIRedactionEnv()
-    task_scores: dict[str, float] = {}
+    task_scores: list[float] = []
 
-    for task_id in TASK_ORDER:
-        observation = env.reset(seed=42, task_id=task_id)
-        predicted_spans = _predict_spans(client, task_id, observation.document_text)
-        result = env.step(PIIAction(spans=predicted_spans, submit=True))
-        score = float(result.final_score or 0.0)
-        task_scores[task_id] = score
-        print(f"{task_id}: {score:.4f}")
+    try:
+        for task_id in TASK_ORDER:
+            observation = env.reset(seed=42, task_id=task_id)
+            state = env.state()
+            _log(
+                "[START]",
+                {
+                    "task_id": observation.task_id,
+                    "difficulty": observation.difficulty,
+                    "document_id": state.episode_id,
+                },
+            )
 
-    print(f"mean: {mean(task_scores.values()):.4f}")
-    env.close()
+            predicted_spans = _predict_spans(
+                client,
+                model_name,
+                task_id,
+                observation.document_text,
+            )
+            result = env.step(PIIAction(spans=predicted_spans, submit=True))
+            score = float(result.final_score or 0.0)
+            task_scores.append(score)
+            _log(
+                "[STEP]",
+                {
+                    "step": state.step_count,
+                    "action_type": "submit",
+                    "reward": float(result.reward),
+                    "done": bool(result.done),
+                },
+            )
+            _log(
+                "[END]",
+                {
+                    "task_id": observation.task_id,
+                    "difficulty": observation.difficulty,
+                    "score": score,
+                    "steps": state.step_count,
+                },
+            )
+    finally:
+        env.close()
+
+    print(
+        json.dumps(
+            {
+                "mean_score": float(mean(task_scores)),
+                "tasks_completed": len(task_scores),
+            },
+            ensure_ascii=True,
+        )
+    )
 
 
 if __name__ == "__main__":
