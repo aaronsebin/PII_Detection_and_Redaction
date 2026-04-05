@@ -1,3 +1,14 @@
+---
+title: PII Redaction Env
+emoji: 🔏
+colorFrom: blue
+colorTo: red
+sdk: docker
+pinned: false
+tags:
+  - openenv
+---
+
 # pii_redaction_env
 
 `pii_redaction_env` is an OpenEnv-compliant environment for seeded synthetic PII detection and redaction. Each episode serves a Faker-generated document at runtime, scores submitted spans deterministically, and exposes the standard `/reset`, `/step`, and `/state` HTTP endpoints through FastAPI on port `7860`.
