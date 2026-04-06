@@ -84,7 +84,7 @@ def _predict_spans(
 def main() -> None:
     api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
     model_name = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-    hf_token = os.getenv("HF_TOKEN", "")
+    hf_token = os.getenv("HF_TOKEN")
     missing = [
         name
         for name, value in [
