@@ -75,7 +75,10 @@ def grade_task(task_id: str, payload: dict):
         return JSONResponse(status_code=422, content={"detail": str(e)})
 
     grader = GRADERS[task_id]
+    EPS = 1e-6
     score = grader(predicted, gold)
+    score = max(EPS, min(1 - EPS, score))
+
     return JSONResponse(content={"task_id": task_id, "score": score})
 
 

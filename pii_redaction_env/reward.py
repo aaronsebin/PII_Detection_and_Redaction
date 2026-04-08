@@ -33,7 +33,7 @@ def compute_reward(
     recall = correct_span_count / len(gold_base) if gold_base else 0.0
     EPS = 1e-6
     if terminal_score is not None:
-        total = terminal_score
+        total = max(EPS, min(1 - EPS, terminal_score))
     else:
         if precision + recall > 0:
             total = 2 * precision * recall / (precision + recall)
