@@ -38,7 +38,7 @@ def compute_reward(
         if precision + recall > 0:
             total = 2 * precision * recall / (precision + recall)
         else:
-            total = 0.001
+            total = 0.01
 
     reward = PIIReward(
         span_matches=0.15 * correct_span_count,
