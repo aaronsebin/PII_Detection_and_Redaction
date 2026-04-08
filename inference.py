@@ -23,7 +23,8 @@ def log_end(success, steps, score, rewards): print(f"[END] success={str(success)
 
 def _clamp(score: float) -> float:
     """Ensure score is strictly within (0, 1) — never exactly 0.0 or 1.0."""
-    return max(0.01, min(0.99, float(score)))
+    EPS = 1e-6
+    return max(EPS, min(1 - EPS, float(score)))
 
 
 PII_TYPE_ALIASES = {
@@ -203,9 +204,9 @@ def main() -> None:
                 action = PIIAction(spans=predicted_spans, submit=True)
                 result = env.step(action)
                 steps = env.state.step_count
-                score = _clamp(result.final_score) if result.final_score is not None else 0.01
-                if result.final_score is not None:
-                    all_scores.append(score)
+                EPS = 1e-6
+                score = _clamp(result.final_score) if result.final_score is not None else EPS
+                all_scores.append(score)
                 rewards = [score]
                 action_str = f"submit({len(predicted_spans)}_spans)"
                 log_step(steps, action_str, score, bool(result.done), None)
@@ -216,13 +217,15 @@ def main() -> None:
                 # Emit valid log lines with a fallback score so the validator
                 # can still parse structured output for this task.
                 print(f"[WARN] task={task_id} failed with: {task_exc}", flush=True)
-                fallback_score = 0.01
+                EPS = 1e-6
+                fallback_score = EPS
                 all_scores.append(fallback_score)
                 log_step(1, "submit(0_spans)", fallback_score, True, str(task_exc)[:80])
                 log_end(False, 1, fallback_score, [fallback_score])
 
-        raw_mean = round(statistics.mean(all_scores), 4) if all_scores else 0.01
-        clamped_mean = max(0.01, min(0.99, raw_mean))
+        EPS = 1e-6
+        raw_mean = round(statistics.mean(all_scores), 4) if all_scores else EPS
+        clamped_mean = max(EPS, min(1 - EPS, raw_mean))
         print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
     finally:
         env.close()

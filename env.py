@@ -53,9 +53,10 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
             closed=False,
         )
         reward = PIIReward()
+        EPS = 1e-6
         return PIIObservation(
             done=False,
-            reward=0.0,
+            reward=EPS,
             task_id=task.task_id,
             difficulty=task.difficulty,
             instructions=task.description,
@@ -89,7 +90,8 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
                 self._state.predicted_spans,
                 self._state.ground_truth_spans,
             )
-            final_score = max(0.01, min(0.99, final_score))
+            EPS = 1e-6
+            final_score = max(EPS, min(1 - EPS, final_score))
             self._state.done = True
 
         reward = compute_reward(
