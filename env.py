@@ -73,11 +73,11 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
     ) -> PIIObservation:
         del timeout_s, kwargs
         if self._state.closed:
-            raise RuntimeError("Environment is closed")
+            self._state.closed = False
         if self._state.task_id is None:
-            raise RuntimeError("Environment must be reset before stepping")
+            self.reset(seed=42)
         if self._state.done:
-            raise RuntimeError("Episode already completed; call reset() to start a new one")
+            self.reset(seed=self._state.seed or 42, task_id=self._state.task_id)
 
         self._state.step_count += 1
         self._state.predicted_spans = list(action.spans)
