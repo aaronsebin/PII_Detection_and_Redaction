@@ -47,7 +47,7 @@ def compute_reward(
         step_penalty=-0.02 * step_count,
         precision_component=precision,
         recall_component=recall,
-        terminal_score=terminal_score or 0.0,
+        terminal_score=terminal_score if terminal_score is not None else 0.01,
     )
     reward.total = max(0.01, min(0.99, total))
     return reward
