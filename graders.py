@@ -65,7 +65,7 @@ def grade_medium(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> f
             scores.append(_safe_f1(tp, fp, fn))
         score = sum(scores) / len(scores)
 
-    score = max(0.001, min(0.999, score))
+    score = max(0.01, min(0.99, score))
     return score
 
 
@@ -97,5 +97,5 @@ def grade_hard(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> flo
         bonus = 0.1 * quasi_recall
         score = base + bonus
 
-    score = max(0.001, min(0.999, score))
+    score = max(0.01, min(0.99, score))
     return score
