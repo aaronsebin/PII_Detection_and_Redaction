@@ -17,8 +17,8 @@ except ImportError:
 
 
 def log_start(task, env, model): print(f"[START] task={task} env={env} model={model}", flush=True)
-def log_step(step, action, reward, done, error): print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error if error else 'null'}", flush=True)
-def log_end(success, steps, score, rewards): print(f"[END] success={str(success).lower()} steps={steps} rewards={','.join(f'{r:.2f}' for r in rewards)}", flush=True)
+def log_step(step, action, reward, done, error): print(f"[STEP] step={step} action={action} reward={reward:.4f} done={str(done).lower()} error={error if error else 'null'}", flush=True)
+def log_end(success, steps, score, rewards): print(f"[END] success={str(success).lower()} steps={steps} rewards={','.join(f'{r:.4f}' for r in rewards)}", flush=True)
 
 
 def _predict_spans(
@@ -124,7 +124,9 @@ def main() -> None:
             action_str = f"submit({len(predicted_spans)}_spans)"
             log_step(steps, action_str, score, bool(result.done), None)
             log_end(score >= 0.1, steps, score, rewards)
-        print(json.dumps({"mean_score": round(statistics.mean(all_scores), 4) if all_scores else 0.0, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
+        raw_mean = round(statistics.mean(all_scores), 4) if all_scores else 0.001
+        clamped_mean = max(0.001, min(0.999, raw_mean))
+        print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
     finally:
         env.close()
 
