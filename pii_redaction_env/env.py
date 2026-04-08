@@ -89,7 +89,7 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
                 self._state.predicted_spans,
                 self._state.ground_truth_spans,
             )
-            final_score = max(0.001, min(0.999, final_score))
+            final_score = max(0.01, min(0.99, final_score))
             self._state.done = True
 
         reward = compute_reward(

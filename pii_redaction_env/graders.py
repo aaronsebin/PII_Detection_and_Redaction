@@ -44,7 +44,7 @@ def grade_easy(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> flo
         == {_span_key(span) for span in gold}
         else _EPSILON
     )
-    score = max(0.001, min(0.999, score))
+    score = max(0.01, min(0.99, score))
     return score
 
 

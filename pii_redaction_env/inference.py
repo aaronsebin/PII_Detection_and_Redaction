@@ -197,7 +197,7 @@ def main() -> None:
             log_step(steps, action_str, score, bool(result.done), None)
             log_end(score >= 0.1, steps, score, rewards)
         raw_mean = round(statistics.mean(all_scores), 4) if all_scores else 0.001
-        clamped_mean = max(0.001, min(0.999, raw_mean))
+        clamped_mean = max(0.01, min(0.99, raw_mean))
         print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
     finally:
         env.close()

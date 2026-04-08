@@ -49,5 +49,5 @@ def compute_reward(
         recall_component=recall,
         terminal_score=terminal_score or 0.0,
     )
-    reward.total = max(0.001, min(0.999, total))
+    reward.total = max(0.01, min(0.99, total))
     return reward
