@@ -95,6 +95,7 @@ def _predict_spans(
     task_id: str,
     document_text: str,
 ) -> list[RedactionSpan]:
+    """Call the LLM to predict PII spans. Returns empty list on any failure."""
     schema = {
         "type": "object",
         "properties": {
@@ -119,47 +120,58 @@ def _predict_spans(
         "required": ["spans"],
         "additionalProperties": False,
     }
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You identify exact PII spans in synthetic documents. "
-                    "Return JSON only with schema: "
-                    f"{json.dumps(schema, ensure_ascii=True)}"
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Task: {task_id}\n"
-                    "Return all PII spans as exact character offsets over the provided document.\n"
-                    f"Document:\n{document_text}"
-                ),
-            },
-        ],
-        response_format={"type": "json_object"},
-    )
-    content = response.choices[0].message.content
-    if not content:
-        raise ValueError("OpenAI chat completion did not contain message content")
-    payload = json.loads(content)
+    try:
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You identify exact PII spans in synthetic documents. "
+                        "Return JSON only with schema: "
+                        f"{json.dumps(schema, ensure_ascii=True)}"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Task: {task_id}\n"
+                        "Return all PII spans as exact character offsets over the provided document.\n"
+                        f"Document:\n{document_text}"
+                    ),
+                },
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content
+        if not content:
+            print(f"[WARN] Empty response from model for task={task_id}", flush=True)
+            return []
+        payload = json.loads(content)
+    except Exception as exc:
+        print(f"[WARN] LLM call failed for task={task_id}: {exc}", flush=True)
+        return []
+
     result_spans = []
-    for s in payload.get("spans", []):
-        raw_type = s.get("pii_type", "")
-        normalized_type = _normalize_pii_type(raw_type)
-        if not normalized_type:
-            continue
-        text = s.get("text", "")
-        if not text:
-            continue
-        result_spans.append(RedactionSpan(
-            start=s.get("start", 0),
-            end=s.get("end", 0),
-            pii_type=normalized_type,
-            text=text,
-        ))
+    try:
+        for s in payload.get("spans", []):
+            raw_type = s.get("pii_type", "")
+            normalized_type = _normalize_pii_type(raw_type)
+            if not normalized_type:
+                continue
+            text = s.get("text", "")
+            if not text:
+                continue
+            result_spans.append(RedactionSpan(
+                start=s.get("start", 0),
+                end=s.get("end", 0),
+                pii_type=normalized_type,
+                text=text,
+            ))
+    except Exception as exc:
+        print(f"[WARN] Span parsing failed for task={task_id}: {exc}", flush=True)
+        return []
+
     return result_spans
 
 
@@ -167,15 +179,8 @@ def main() -> None:
     api_base_url = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
     model_name = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
     hf_token = os.getenv("HF_TOKEN")
-    missing = [
-        name
-        for name, value in [
-            ("HF_TOKEN", hf_token),
-        ]
-        if not value
-    ]
-    if missing:
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+    if not hf_token:
+        raise RuntimeError("Missing required environment variable: HF_TOKEN")
 
     client = OpenAI(base_url=api_base_url, api_key=hf_token)
     env = PIIRedactionEnv()
@@ -183,25 +188,39 @@ def main() -> None:
 
     try:
         for task_id in TASK_ORDER:
-            log_start(task_id, "pii_redaction_env", model_name)
-            observation = env.reset(seed=42, task_id=task_id)
-            predicted_spans = _predict_spans(
-                client,
-                model_name,
-                task_id,
-                observation.document_text,
-            )
-            predicted_spans = _fix_span_offsets(predicted_spans, observation.document_text)
-            action = PIIAction(spans=predicted_spans, submit=True)
-            result = env.step(action)
-            steps = env.state.step_count
-            score = _clamp(result.final_score) if result.final_score is not None else 0.01
-            if result.final_score is not None:
-                all_scores.append(score)
-            rewards = [score]
-            action_str = f"submit({len(predicted_spans)}_spans)"
-            log_step(steps, action_str, score, bool(result.done), None)
-            log_end(score >= 0.1, steps, score, rewards)
+            try:
+                log_start(task_id, "pii_redaction_env", model_name)
+                observation = env.reset(seed=42, task_id=task_id)
+
+                predicted_spans = _predict_spans(
+                    client,
+                    model_name,
+                    task_id,
+                    observation.document_text,
+                )
+                predicted_spans = _fix_span_offsets(predicted_spans, observation.document_text)
+
+                action = PIIAction(spans=predicted_spans, submit=True)
+                result = env.step(action)
+                steps = env.state.step_count
+                score = _clamp(result.final_score) if result.final_score is not None else 0.01
+                if result.final_score is not None:
+                    all_scores.append(score)
+                rewards = [score]
+                action_str = f"submit({len(predicted_spans)}_spans)"
+                log_step(steps, action_str, score, bool(result.done), None)
+                log_end(score >= 0.1, steps, score, rewards)
+
+            except Exception as task_exc:
+                # A single task failure must not crash the whole script.
+                # Emit valid log lines with a fallback score so the validator
+                # can still parse structured output for this task.
+                print(f"[WARN] task={task_id} failed with: {task_exc}", flush=True)
+                fallback_score = 0.01
+                all_scores.append(fallback_score)
+                log_step(1, "submit(0_spans)", fallback_score, True, str(task_exc)[:80])
+                log_end(False, 1, fallback_score, [fallback_score])
+
         raw_mean = round(statistics.mean(all_scores), 4) if all_scores else 0.01
         clamped_mean = max(0.01, min(0.99, raw_mean))
         print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
