@@ -229,7 +229,7 @@ def main() -> None:
                 log_end(False, 1, safe_fallback, [safe_fallback])
 
         EPS = 1e-6
-        raw_mean = round(statistics.mean(all_scores), 4) if all_scores else EPS
+        raw_mean = statistics.mean(all_scores) if all_scores else EPS
         clamped_mean = max(EPS, min(1 - EPS, raw_mean))
         print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
     finally:
