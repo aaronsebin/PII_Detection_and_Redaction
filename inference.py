@@ -209,7 +209,7 @@ def main() -> None:
                 steps = env.state.step_count
                 EPS = 1e-6
                 score = _clamp(result.final_score) if result.final_score is not None else EPS
-                safe_score = max(LOG_EPS, score)
+                safe_score = max(LOG_EPS, min(0.99, score))
                 all_scores.append(score)  # keep original for mean calculation
                 rewards = [safe_score]
                 action_str = f"submit({len(predicted_spans)}_spans)"
@@ -223,7 +223,7 @@ def main() -> None:
                 print(f"[WARN] task={task_id} failed with: {task_exc}", flush=True)
                 EPS = 1e-6
                 fallback_score = EPS
-                safe_fallback = max(LOG_EPS, fallback_score)
+                safe_fallback = max(LOG_EPS, min(0.99, fallback_score))
                 all_scores.append(fallback_score)
                 log_step(1, "submit(0_spans)", safe_fallback, True, str(task_exc)[:80])
                 log_end(False, 1, safe_fallback, [safe_fallback])
