@@ -32,6 +32,9 @@ def compute_reward(
     precision = correct_span_count / len(predicted_base) if predicted_base else 0.0
     recall = correct_span_count / len(gold_base) if gold_base else 0.0
     EPS = 1e-6
+    safe_precision = max(EPS, precision)
+    safe_recall = max(EPS, recall)
+
     if terminal_score is not None:
         total = max(EPS, min(1 - EPS, terminal_score))
     else:
@@ -39,7 +42,7 @@ def compute_reward(
             total = 2 * precision * recall / (precision + recall)
         else:
             total = EPS
-    
+
     safe_terminal = max(EPS, min(1 - EPS, terminal_score)) if terminal_score is not None else EPS
 
     reward = PIIReward(
@@ -47,8 +50,8 @@ def compute_reward(
         type_matches=0.10 * correct_type_count,
         false_positive_penalty=-0.05 * false_positive_count,
         step_penalty=-0.02 * step_count,
-        precision_component=precision,
-        recall_component=recall,
+        precision_component=safe_precision,
+        recall_component=safe_recall,
         terminal_score=safe_terminal,
     )
     reward.total = max(EPS, min(1 - EPS, total))
