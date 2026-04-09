@@ -16,6 +16,9 @@ except ImportError:
     from tasks import TASK_ORDER
 
 
+LOG_EPS = 0.01  # minimum value safe to print with :.2f (1e-6 would round to 0.00 → FAIL)
+
+
 def log_start(task, env, model): print(f"[START] task={task} env={env} model={model}", flush=True)
 def log_step(step, action, reward, done, error): print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error if error else 'null'}", flush=True)
 def log_end(success, steps, score, rewards): print(f"[END] success={str(success).lower()} steps={steps} rewards={','.join(f'{r:.2f}' for r in rewards)}", flush=True)
@@ -206,11 +209,12 @@ def main() -> None:
                 steps = env.state.step_count
                 EPS = 1e-6
                 score = _clamp(result.final_score) if result.final_score is not None else EPS
-                all_scores.append(score)
-                rewards = [score]
+                safe_score = max(LOG_EPS, score)
+                all_scores.append(score)  # keep original for mean calculation
+                rewards = [safe_score]
                 action_str = f"submit({len(predicted_spans)}_spans)"
-                log_step(steps, action_str, score, bool(result.done), None)
-                log_end(score >= 0.1, steps, score, rewards)
+                log_step(steps, action_str, safe_score, bool(result.done), None)
+                log_end(safe_score >= 0.1, steps, safe_score, rewards)
 
             except Exception as task_exc:
                 # A single task failure must not crash the whole script.
@@ -219,9 +223,10 @@ def main() -> None:
                 print(f"[WARN] task={task_id} failed with: {task_exc}", flush=True)
                 EPS = 1e-6
                 fallback_score = EPS
+                safe_fallback = max(LOG_EPS, fallback_score)
                 all_scores.append(fallback_score)
-                log_step(1, "submit(0_spans)", fallback_score, True, str(task_exc)[:80])
-                log_end(False, 1, fallback_score, [fallback_score])
+                log_step(1, "submit(0_spans)", safe_fallback, True, str(task_exc)[:80])
+                log_end(False, 1, safe_fallback, [safe_fallback])
 
         EPS = 1e-6
         raw_mean = round(statistics.mean(all_scores), 4) if all_scores else EPS
