@@ -101,17 +101,22 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
             terminal_score=final_score,
         )
         self._state.reward_history.append(reward)
+        
+        EPS = 1e-6
+
+        safe_reward = max(EPS, min(1 - EPS, reward.total))
+        safe_final = max(EPS, min(1 - EPS, final_score)) if final_score is not None else EPS
 
         return PIIObservation(
             done=action.submit,
-            reward=reward.total,
+            reward=safe_reward,
             task_id=self._state.task_id,
             difficulty=self._state.difficulty or "",
             instructions=TASKS[self._state.task_id].description,
             document_text=self._state.document_text,
             predicted_spans=list(self._state.predicted_spans),
-            reward_details=reward,
-            final_score=final_score,
+            reward_details=None,
+            final_score=safe_final,
             metadata={
                 "task_id": self._state.task_id,
                 "seed": self._state.seed,
