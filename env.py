@@ -115,7 +115,7 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
             instructions=TASKS[self._state.task_id].description,
             document_text=self._state.document_text,
             predicted_spans=list(self._state.predicted_spans),
-            reward_details=None,
+            reward_details=reward,
             final_score=safe_final,
             metadata={
                 "task_id": self._state.task_id,
