@@ -151,6 +151,19 @@ def _predict_spans(
         if not content:
             print(f"[WARN] Empty response from model for task={task_id}", flush=True)
             return []
+        content = content.strip()
+        brace_count = 0
+        end_idx = 0
+        for i, char in enumerate(content):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    end_idx = i + 1
+                    break
+        if end_idx > 0:
+            content = content[:end_idx]
         payload = json.loads(content)
     except Exception as exc:
         print(f"[WARN] LLM call failed for task={task_id}: {exc}", flush=True)
