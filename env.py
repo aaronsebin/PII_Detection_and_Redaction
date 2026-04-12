@@ -74,11 +74,11 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
     ) -> PIIObservation:
         del timeout_s, kwargs
         if self._state.closed:
-            self._state.closed = False
+            raise RuntimeError("Environment is closed — call reset() to start a new episode")
         if self._state.task_id is None:
-            self.reset(seed=42)
+            raise RuntimeError("Environment must be reset before stepping")
         if self._state.done:
-            self.reset(seed=self._state.seed or 42, task_id=self._state.task_id)
+            raise RuntimeError("Episode already completed — call reset() to start a new one")
 
         self._state.step_count += 1
         self._state.predicted_spans = list(action.spans)
@@ -101,22 +101,17 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
             terminal_score=final_score,
         )
         self._state.reward_history.append(reward)
-        
-        EPS = 1e-6
-
-        safe_reward = max(EPS, min(1 - EPS, reward.total))
-        safe_final = max(EPS, min(1 - EPS, final_score)) if final_score is not None else EPS
 
         return PIIObservation(
             done=action.submit,
-            reward=safe_reward,
+            reward=reward.total,
             task_id=self._state.task_id,
             difficulty=self._state.difficulty or "",
             instructions=TASKS[self._state.task_id].description,
             document_text=self._state.document_text,
             predicted_spans=list(self._state.predicted_spans),
             reward_details=reward,
-            final_score=safe_final,
+            final_score=final_score,
             metadata={
                 "task_id": self._state.task_id,
                 "seed": self._state.seed,
