@@ -16,6 +16,10 @@ except ImportError:
     from models import PIIAction, PIIType, RedactionSpan
     from tasks import TASK_ORDER
 
+# Use 0.01 as minimum — 1e-6 rounds to 0.00 with :.2f which fails validation
+MIN_SCORE = 0.01
+MAX_SCORE = 0.99
+
 
 def log_start(task, env, model): print(f"[START] task={task} env={env} model={model}", flush=True)
 def log_step(step, action, reward, done, error): print(f"[STEP] step={step} action={action} reward={reward:.2f} done={str(done).lower()} error={error if error else 'null'}", flush=True)
@@ -23,9 +27,8 @@ def log_end(success, steps, score, rewards): print(f"[END] success={str(success)
 
 
 def _clamp(score: float) -> float:
-    """Ensure score is strictly within (0, 1) — never exactly 0.0 or 1.0."""
-    EPS = 1e-6
-    return max(EPS, min(1 - EPS, float(score)))
+    """Ensure score is strictly within (0.01, 0.99) — never rounds to 0.00 or 1.00."""
+    return max(MIN_SCORE, min(MAX_SCORE, float(score)))
 
 
 PII_TYPE_ALIASES = {
@@ -199,7 +202,6 @@ def main() -> None:
         raise RuntimeError("Missing required environment variable: HF_TOKEN")
 
     client = OpenAI(base_url=api_base_url, api_key=hf_token)
-    eps = 1e-6
     all_scores: list[float] = []
 
     for task_id in TASK_ORDER:
@@ -207,7 +209,7 @@ def main() -> None:
         env = PIIRedactionEnv()
         rewards: list[float] = []
         steps = 0
-        score = eps
+        score = MIN_SCORE
         success = False
         task_error = None
         action_str = "submit(0_spans)"
@@ -235,16 +237,16 @@ def main() -> None:
             task_error = None
             log_step(steps, action_str, step_reward, bool(result.done), task_error)
 
-            score = _clamp(result.final_score) if result.final_score is not None else eps
+            score = _clamp(result.final_score) if result.final_score is not None else MIN_SCORE
             success = score >= 0.1
             all_scores.append(score)
 
         except Exception as task_exc:
             task_error = str(task_exc)[:80]
             print(f"[WARN] task={task_id} failed with: {task_exc}", file=sys.stderr, flush=True)
-            rewards = [eps]
-            all_scores.append(eps)
-            log_step(1, action_str, eps, True, task_error)
+            rewards = [MIN_SCORE]
+            all_scores.append(MIN_SCORE)
+            log_step(1, action_str, MIN_SCORE, True, task_error)
 
         finally:
             try:
@@ -254,8 +256,8 @@ def main() -> None:
             log_end(success, steps, score, rewards)
 
     # Final summary
-    raw_mean = statistics.mean(all_scores) if all_scores else eps
-    clamped_mean = max(eps, min(1 - eps, raw_mean))
+    raw_mean = statistics.mean(all_scores) if all_scores else MIN_SCORE
+    clamped_mean = max(MIN_SCORE, min(MAX_SCORE, raw_mean))
     print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
 
 

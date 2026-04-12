@@ -5,6 +5,10 @@ try:
 except ImportError:
     from models import PIIReward, RedactionSpan
 
+# Use 0.01 as minimum — 1e-6 rounds to 0.00 with :.2f which fails validation
+MIN_SCORE = 0.01
+MAX_SCORE = 0.99
+
 
 def _base_key(span: RedactionSpan) -> tuple[int, int]:
     return (span.start, span.end)
@@ -44,7 +48,6 @@ def compute_reward(
     precision_bonus = 0.15 * precision
     recall_bonus = 0.15 * recall
 
-    EPS = 1e-6
     shaped_total = (
         span_match_bonus
         + type_match_bonus
@@ -59,7 +62,7 @@ def compute_reward(
     else:
         total = shaped_total
 
-    safe_terminal = max(EPS, min(1 - EPS, terminal_score)) if terminal_score is not None else EPS
+    safe_terminal = max(MIN_SCORE, min(MAX_SCORE, terminal_score)) if terminal_score is not None else MIN_SCORE
 
     reward = PIIReward(
         span_matches=span_match_bonus,
@@ -70,5 +73,5 @@ def compute_reward(
         recall_component=recall,
         terminal_score=safe_terminal,
     )
-    reward.total = max(EPS, min(1 - EPS, total))
+    reward.total = max(MIN_SCORE, min(MAX_SCORE, total))
     return reward

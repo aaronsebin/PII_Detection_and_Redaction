@@ -15,6 +15,10 @@ except ImportError:
     from reward import compute_reward
     from tasks import GRADERS, TASKS, TASK_ORDER
 
+# Use 0.01 as minimum — 1e-6 rounds to 0.00 with :.2f which fails validation
+MIN_SCORE = 0.01
+MAX_SCORE = 0.99
+
 
 class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
     SUPPORTS_CONCURRENT_SESSIONS = True
@@ -53,10 +57,9 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
             closed=False,
         )
         reward = PIIReward()
-        EPS = 1e-6
         return PIIObservation(
             done=False,
-            reward=EPS,
+            reward=MIN_SCORE,
             task_id=task.task_id,
             difficulty=task.difficulty,
             instructions=task.description,
@@ -86,12 +89,12 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
         final_score = None
         if action.submit:
             grader = GRADERS[self._state.task_id]
-            final_score = grader(
+            raw_score = grader(
                 self._state.predicted_spans,
                 self._state.ground_truth_spans,
             )
-            EPS = 1e-6
-            final_score = max(EPS, min(1 - EPS, final_score))
+            # Clamp to 0.01-0.99 — 1e-6 rounds to 0.00 with :.2f which fails validation
+            final_score = max(MIN_SCORE, min(MAX_SCORE, raw_score))
             self._state.done = True
 
         reward = compute_reward(
@@ -102,16 +105,20 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
         )
         self._state.reward_history.append(reward)
 
+        # Ensure reward.total is also within safe range
+        safe_reward = max(MIN_SCORE, min(MAX_SCORE, reward.total))
+        safe_final = max(MIN_SCORE, min(MAX_SCORE, final_score)) if final_score is not None else None
+
         return PIIObservation(
             done=action.submit,
-            reward=reward.total,
+            reward=safe_reward,
             task_id=self._state.task_id,
             difficulty=self._state.difficulty or "",
             instructions=TASKS[self._state.task_id].description,
             document_text=self._state.document_text,
             predicted_spans=list(self._state.predicted_spans),
             reward_details=reward,
-            final_score=final_score,
+            final_score=safe_final,
             metadata={
                 "task_id": self._state.task_id,
                 "seed": self._state.seed,

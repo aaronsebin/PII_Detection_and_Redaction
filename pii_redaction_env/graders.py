@@ -8,8 +8,9 @@ try:
 except ImportError:
     from models import PIIType, RedactionSpan
 
-
-EPS = 1e-6
+# Use 0.01 as minimum — 1e-6 rounds to 0.00 with :.2f which fails validation
+MIN_SCORE = 0.01
+MAX_SCORE = 0.99
 
 
 def _span_key(span: RedactionSpan) -> tuple[int, int, str]:
@@ -27,26 +28,26 @@ def _group_by_type(
 
 def _safe_f1(tp: int, fp: int, fn: int) -> float:
     if tp == 0 and fp == 0 and fn == 0:
-        return max(EPS, min(1 - EPS, 1 - EPS))
+        return MAX_SCORE
 
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
 
     if precision + recall == 0:
-        return max(EPS, min(1 - EPS, EPS))
+        return MIN_SCORE
 
     f1 = 2 * precision * recall / (precision + recall)
-    return max(EPS, min(1 - EPS, f1))
+    return max(MIN_SCORE, min(MAX_SCORE, f1))
 
 
 def grade_easy(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> float:
     score = (
-        1 - EPS
+        MAX_SCORE
         if {_span_key(span) for span in predicted}
         == {_span_key(span) for span in gold}
-        else EPS
+        else MIN_SCORE
     )
-    return max(EPS, min(1 - EPS, score))
+    return max(MIN_SCORE, min(MAX_SCORE, score))
 
 
 def grade_medium(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> float:
@@ -56,7 +57,7 @@ def grade_medium(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> f
     labels = sorted(set(predicted_by_type) | set(gold_by_type), key=lambda item: item.value)
 
     if not labels:
-        score = 1 - EPS
+        score = MAX_SCORE
     else:
         scores: list[float] = []
         for label in labels:
@@ -71,7 +72,7 @@ def grade_medium(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> f
 
         score = sum(scores) / len(scores)
 
-    return max(EPS, min(1 - EPS, score))
+    return max(MIN_SCORE, min(MAX_SCORE, score))
 
 
 def grade_hard(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> float:
@@ -81,7 +82,7 @@ def grade_hard(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> flo
     labels = sorted(set(predicted_by_type) | set(gold_by_type), key=lambda item: item.value)
 
     if not labels:
-        score = 1 - EPS
+        score = MAX_SCORE
     else:
         total_weight = 0.0
         weighted_score = 0.0
@@ -102,10 +103,10 @@ def grade_hard(predicted: list[RedactionSpan], gold: list[RedactionSpan]) -> flo
             total_weight += weight
 
             if label == PIIType.QUASI_IDENTIFIER:
-                quasi_recall = tp / (tp + fn) if tp + fn else (1 - EPS)
+                quasi_recall = tp / (tp + fn) if tp + fn else MAX_SCORE
 
-        base = weighted_score / total_weight if total_weight else EPS
+        base = weighted_score / total_weight if total_weight else MIN_SCORE
         bonus = 0.1 * quasi_recall
         score = base + bonus
 
-    return max(EPS, min(1 - EPS, score))
+    return max(MIN_SCORE, min(MAX_SCORE, score))
