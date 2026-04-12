@@ -2,7 +2,7 @@ spec_version: 1
 name: pii_redaction_env
 type: space
 runtime: fastapi
-app: server.app:app
+app: server:app
 port: 7860
 metadata:
   description: Seeded synthetic PII detection and redaction environment with deterministic grading.

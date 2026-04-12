@@ -105,7 +105,7 @@ class PIIRedactionEnv(Environment[PIIAction, PIIObservation, PIIState]):
         )
         self._state.reward_history.append(reward)
 
-        # Ensure reward.total is also within safe range
+        # Ensure reward.total and final_score are within safe range
         safe_reward = max(MIN_SCORE, min(MAX_SCORE, reward.total))
         safe_final = max(MIN_SCORE, min(MAX_SCORE, final_score)) if final_score is not None else None
 

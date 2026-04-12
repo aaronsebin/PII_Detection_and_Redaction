@@ -6,3 +6,4 @@ faker
 openai
 pytest
 httpx
+requests

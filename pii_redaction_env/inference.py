@@ -232,12 +232,11 @@ def main() -> None:
             result = env.step(action)
 
             steps = env.state.step_count
-            step_reward = _clamp(result.reward)
-            rewards.append(step_reward)
-            task_error = None
-            log_step(steps, action_str, step_reward, bool(result.done), task_error)
-
+            # Use final_score for both [STEP] and [END] so they always match
             score = _clamp(result.final_score) if result.final_score is not None else MIN_SCORE
+            rewards.append(score)
+            task_error = None
+            log_step(steps, action_str, score, bool(result.done), task_error)
             success = score >= 0.1
             all_scores.append(score)
 
