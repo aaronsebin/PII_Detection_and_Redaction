@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import statistics
+import sys
 
 from openai import OpenAI
 
@@ -14,9 +15,6 @@ except ImportError:
     from env import PIIRedactionEnv
     from models import PIIAction, PIIType, RedactionSpan
     from tasks import TASK_ORDER
-
-
-LOG_EPS = 0.01  # minimum value safe to print with :.2f (1e-6 would round to 0.00 → FAIL)
 
 
 def log_start(task, env, model): print(f"[START] task={task} env={env} model={model}", flush=True)
@@ -149,8 +147,9 @@ def _predict_spans(
         )
         content = response.choices[0].message.content
         if not content:
-            print(f"[WARN] Empty response from model for task={task_id}", flush=True)
+            print(f"[WARN] Empty response from model for task={task_id}", file=sys.stderr, flush=True)
             return []
+        # Strip any extra data after the first complete JSON object
         content = content.strip()
         brace_count = 0
         end_idx = 0
@@ -166,7 +165,7 @@ def _predict_spans(
             content = content[:end_idx]
         payload = json.loads(content)
     except Exception as exc:
-        print(f"[WARN] LLM call failed for task={task_id}: {exc}", flush=True)
+        print(f"[WARN] LLM call failed for task={task_id}: {exc}", file=sys.stderr, flush=True)
         return []
 
     result_spans = []
@@ -186,7 +185,7 @@ def _predict_spans(
                 text=text,
             ))
     except Exception as exc:
-        print(f"[WARN] Span parsing failed for task={task_id}: {exc}", flush=True)
+        print(f"[WARN] Span parsing failed for task={task_id}: {exc}", file=sys.stderr, flush=True)
         return []
 
     return result_spans
@@ -200,53 +199,64 @@ def main() -> None:
         raise RuntimeError("Missing required environment variable: HF_TOKEN")
 
     client = OpenAI(base_url=api_base_url, api_key=hf_token)
-    env = PIIRedactionEnv()
+    eps = 1e-6
     all_scores: list[float] = []
 
-    try:
-        for task_id in TASK_ORDER:
+    for task_id in TASK_ORDER:
+        # Fresh env per task — avoids state leakage between tasks
+        env = PIIRedactionEnv()
+        rewards: list[float] = []
+        steps = 0
+        score = eps
+        success = False
+        task_error = None
+        action_str = "submit(0_spans)"
+
+        log_start(task_id, "pii_redaction_env", model_name)
+
+        try:
+            observation = env.reset(seed=42, task_id=task_id)
+
+            predicted_spans = _predict_spans(
+                client,
+                model_name,
+                task_id,
+                observation.document_text,
+            )
+            predicted_spans = _fix_span_offsets(predicted_spans, observation.document_text)
+
+            action = PIIAction(spans=predicted_spans, submit=True)
+            action_str = f"submit({len(predicted_spans)}_spans)"
+            result = env.step(action)
+
+            steps = env.state.step_count
+            step_reward = _clamp(result.reward)
+            rewards.append(step_reward)
+            task_error = None
+            log_step(steps, action_str, step_reward, bool(result.done), task_error)
+
+            score = _clamp(result.final_score) if result.final_score is not None else eps
+            success = score >= 0.1
+            all_scores.append(score)
+
+        except Exception as task_exc:
+            task_error = str(task_exc)[:80]
+            print(f"[WARN] task={task_id} failed with: {task_exc}", file=sys.stderr, flush=True)
+            rewards = [eps]
+            all_scores.append(eps)
+            log_step(1, action_str, eps, True, task_error)
+
+        finally:
             try:
-                log_start(task_id, "pii_redaction_env", model_name)
-                observation = env.reset(seed=42, task_id=task_id)
+                env.close()
+            except Exception as close_exc:
+                print(f"[WARN] env.close() failed for task={task_id}: {close_exc}", file=sys.stderr, flush=True)
+            log_end(success, steps, score, rewards)
 
-                predicted_spans = _predict_spans(
-                    client,
-                    model_name,
-                    task_id,
-                    observation.document_text,
-                )
-                predicted_spans = _fix_span_offsets(predicted_spans, observation.document_text)
-
-                action = PIIAction(spans=predicted_spans, submit=True)
-                result = env.step(action)
-                steps = env.state.step_count
-                EPS = 1e-6
-                score = _clamp(result.final_score) if result.final_score is not None else EPS
-                safe_score = max(LOG_EPS, min(0.99, score))
-                all_scores.append(score)  # keep original for mean calculation
-                rewards = [safe_score]
-                action_str = f"submit({len(predicted_spans)}_spans)"
-                log_step(steps, action_str, safe_score, bool(result.done), None)
-                log_end(safe_score >= 0.1, steps, safe_score, rewards)
-
-            except Exception as task_exc:
-                # A single task failure must not crash the whole script.
-                # Emit valid log lines with a fallback score so the validator
-                # can still parse structured output for this task.
-                print(f"[WARN] task={task_id} failed with: {task_exc}", flush=True)
-                EPS = 1e-6
-                fallback_score = EPS
-                safe_fallback = max(LOG_EPS, min(0.99, fallback_score))
-                all_scores.append(fallback_score)
-                log_step(1, "submit(0_spans)", safe_fallback, True, str(task_exc)[:80])
-                log_end(False, 1, safe_fallback, [safe_fallback])
-
-        EPS = 1e-6
-        raw_mean = statistics.mean(all_scores) if all_scores else EPS
-        clamped_mean = max(EPS, min(1 - EPS, raw_mean))
-        print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
-    finally:
-        env.close()
+    # Final summary
+    raw_mean = statistics.mean(all_scores) if all_scores else eps
+    clamped_mean = max(eps, min(1 - eps, raw_mean))
+    print(json.dumps({"mean_score": clamped_mean, "tasks_completed": len(all_scores)}, ensure_ascii=True), flush=True)
 
 
 if __name__ == "__main__":
